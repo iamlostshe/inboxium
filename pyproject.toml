@@ -1,0 +1,28 @@
+[project]
+name = "inboxium"
+version = "0.0.8"
+dependencies = [
+  "argparse",
+  "logbook",
+]
+requires-python = ">=3.13"
+authors = [
+  {name = "Kenneth Reitz", email = "me@kennethreitz.com"},
+  {name = "Melcikov Ivan", email = "vanamelcikov7275@gmail.com"},
+]
+description = "SMTP for Humans."
+readme = "README.md"
+license = "BSD"
+license-files = ["LICENSE"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Natural Language :: English",
+    "License :: OSI Approved :: BSD License",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.13",
+]
+
+[project.urls]
+Homepage = "https://github.com/iamlostshe/inboxium"
+Repository = "https://github.com/iamlostshe/inboxium.git"

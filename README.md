@@ -1,4 +1,4 @@
-# Inbox.py: SMTP Server for Humans
+# Inboxium: SMTP Server for Humans
 
 This is the simplest SMTP server you'll ever see. It's asynchronous.
 
@@ -29,15 +29,15 @@ if __name__ == '__main__':
 ```
 
 ``` sh
-dasinbox.py 0.0.0.0 4467
+dashinboxium.py 0.0.0.0 4467
 
 [2012-04-28 07:31] INFO: inbox: Starting SMTP server at 0.0.0.0:4467
 ```
 
 ## Installation
 
-Installing Inbox.py is simple::
+Installing inboxium is simple::
 
 ``` sh
-pip install inbox.py
+pip install inboxium
 ```
