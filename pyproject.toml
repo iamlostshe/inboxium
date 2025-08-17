@@ -2,8 +2,8 @@
 name = "inboxium"
 version = "0.0.8"
 dependencies = [
-  "argparse",
-  "logbook",
+  "aiosmtpd>=1.4.6",
+  "loguru>=0.7.3",
 ]
 requires-python = ">=3.13"
 authors = [

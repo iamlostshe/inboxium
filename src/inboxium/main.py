@@ -1,71 +1,100 @@
-import argparse
-from email.parser import Parser
+import inspect
+from email import policy
+from email.header import decode_header, make_header
+from email.parser import BytesParser
 
-import asyncore
-import smtpd
-from logbook import Logger
-
-log = Logger(__name__)
-
-
-class InboxServer(smtpd.SMTPServer):
-    """Logging-enabled SMTPServer instance with handler support."""
-
-    def __init__(self, handler, *args, **kwargs):
-        """Init the inbox server class."""
-        super(InboxServer, self).__init__(*args, **kwargs)
-        self._handler = handler
-
-    def process_message(self, peer, mailfrom, rcpttos, data):
-        """Work with message."""
-        log.info("Collating message from {}", mailfrom)
-        subject = Parser().parsestr(data)["subject"]
-        log.debug(dict(to=rcpttos, sender=mailfrom, subject=subject, body=data))
-        return self._handler(to=rcpttos, sender=mailfrom, subject=subject, body=data)
+from aiosmtpd.controller import Controller
+from aiosmtpd.smtp import SMTP, Envelope, Session
+from loguru import logger
 
 
 class Inbox:
-    """A simple SMTP Inbox."""
+    """SMTP Inbox server with decoding of headers and body."""
 
-    def __init__(
-        self, port: str | int | None = None, address: str | None = None,
-    ) -> None:
-        """Init the inbox class."""
-        self.port = port
+    def __init__(self, address: str, port: int | str) -> None:
         self.address = address
+        self.port = int(port)
         self.collator = None
 
     def collate(self, collator):
-        """Func decorator. Used to specify inbox handler."""
+        """Decorator to set handler for incoming messages."""
         self.collator = collator
-        print(type(collator))
         return collator
 
-    def serve(
+    async def handle_RCPT(
         self,
-        port: str | int | None = None,
-        address: str | None = None,
-    ) -> None:
-        """Serve the SMTP server on the given port and address."""
-        port = port or self.port
-        address = address or self.address
+        server: SMTP,
+        session: Session,
+        envelope: Envelope,
+        address: str,
+        rcpt_options,
+    ):
+        """Handle RCPT command."""
+        envelope.rcpt_tos.append(address)
+        return "250 OK"
 
-        log.info("Starting SMTP server at {}:{}", address, port)
+    async def handle_DATA(self, server: SMTP, session: Session, envelope: Envelope):
+        """Handle DATA command."""
+        mailfrom = envelope.mail_from
+        rcpttos = envelope.rcpt_tos
+        raw_data = envelope.content
 
-        InboxServer(self.collator, (address, port), None)
+        # Парсим письмо с учетом MIME-политик
+        msg = BytesParser(policy=policy.default).parsebytes(raw_data)
 
+        # Декодируем заголовки
+        subject = str(make_header(decode_header(msg.get("Subject", "No Subject"))))
+        sender = str(make_header(decode_header(msg.get("From", mailfrom))))
+        recipients = str(make_header(decode_header(msg.get("To", ", ".join(rcpttos)))))
+
+        # Извлекаем тело (text/plain, либо fallback)
+        body = ""
+        if msg.is_multipart():
+            for part in msg.walk():
+                if part.get_content_type() == "text/plain":
+                    body = part.get_payload(decode=True).decode(
+                        part.get_content_charset("utf-8"), errors="replace",
+                    )
+                    break
+        else:
+            body = msg.get_payload(decode=True).decode(
+                msg.get_content_charset("utf-8"), errors="replace",
+            )
+
+        if self.collator:
+            try:
+                if inspect.iscoroutinefunction(self.collator):
+                    await self.collator(
+                        to=recipients,
+                        sender=sender,
+                        subject=subject,
+                        body=body,
+                    )
+                else:
+                    await server.loop.run_in_executor(
+                        None,
+                        self.collator,
+                        recipients,
+                        sender,
+                        subject,
+                        body,
+                    )
+            except Exception as e:  # noqa: BLE001
+                logger.exception(e)
+                return "500 Internal server error"
+
+        return "250 Message accepted for delivery"
+
+    def serve(self) -> None:
+        """Run the SMTP server."""
+        logger.info("Starting SMTP server at {}:{}", self.address, self.port)
+        controller = Controller(
+            self,
+            hostname=self.address,
+            port=self.port,
+        )
         try:
-            asyncore.loop()
-        except KeyboardInterrupt:
-            log.info("Cleaning up")
-
-    def dispatch(self) -> None:
-        """Command-line dispatch."""
-        parser = argparse.ArgumentParser(description="Run an Inbox server.")
-
-        parser.add_argument("addr", metavar="addr", type=str, help="addr to bind to")
-        parser.add_argument("port", metavar="port", type=int, help="port to bind to")
-
-        args = parser.parse_args()
-
-        self.serve(port=args.port, address=args.addr)
+            controller.start()
+            controller._thread.join()
+        finally:
+            controller.stop()

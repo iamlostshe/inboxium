@@ -6,32 +6,37 @@ One instance should handle over one thousand emails per second.
 
 ## Usage
 
-Give your app an inbox easily::
+Give your app an inbox easily:
 
 ``` python
-from inbox import Inbox
+from inboxium import Inbox
 
-inbox = Inbox()
+inbox = Inbox("127.0.0.1", 4470)
+
 
 @inbox.collate
-def handle(to, sender, subject, body):
-    ...
+def handle(to: list[str], sender: str, subject: str, body: str) -> None:
+    print(to)
+    print(sender)
+    print(subject)
+    print(body)
 
-# Bind directly.
-inbox.serve(address='0.0.0.0', port=4467)
-```
 
-You can also defer to the commandline::
-
-``` python
-if __name__ == '__main__':
-    inbox.dispatch()
+if __name__ == "__main__":
+    inbox.serve()
 ```
 
 ``` sh
-dashinboxium.py 0.0.0.0 4467
+python3 filename.py
+```
 
-[2012-04-28 07:31] INFO: inbox: Starting SMTP server at 0.0.0.0:4467
+```
+Starting SMTP server at 127.0.0.1:4470
+
+deepcyan@127.0.0.1
+sender@127.0.0.1
+Test mail
+Thats test mail for local SMTP-server
 ```
 
 ## Installation
