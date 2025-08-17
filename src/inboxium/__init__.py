@@ -1,5 +1,5 @@
 """Initializating a lib."""
 
-from .main import InboxServer, Inbox
+from .main import Inbox, InboxServer
 
-__all__ = ("InboxServer", "Inbox")
+__all__ = ("Inbox", "InboxServer")

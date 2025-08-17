@@ -1,17 +1,15 @@
-# -*- coding: utf-8 -*-
 
-import smtpd
-import asyncore
 import argparse
 from email.parser import Parser
 
+import asyncore
+import smtpd
 from logbook import Logger
-
 
 log = Logger(__name__)
 
 
-class InboxServer(smtpd.SMTPServer, object):
+class InboxServer(smtpd.SMTPServer):
     """Logging-enabled SMTPServer instance with handler support."""
 
     def __init__(self, handler, *args, **kwargs):
@@ -19,13 +17,13 @@ class InboxServer(smtpd.SMTPServer, object):
         self._handler = handler
 
     def process_message(self, peer, mailfrom, rcpttos, data):
-        log.info('Collating message from {0}'.format(mailfrom))
-        subject = Parser().parsestr(data)['subject']
+        log.info(f"Collating message from {mailfrom}")
+        subject = Parser().parsestr(data)["subject"]
         log.debug(dict(to=rcpttos, sender=mailfrom, subject=subject, body=data))
         return self._handler(to=rcpttos, sender=mailfrom, subject=subject, body=data)
 
 
-class Inbox(object):
+class Inbox:
     """A simple SMTP Inbox."""
 
     def __init__(self, port=None, address=None):
@@ -43,21 +41,21 @@ class Inbox(object):
         port = port or self.port
         address = address or self.address
 
-        log.info('Starting SMTP server at {0}:{1}'.format(address, port))
+        log.info(f"Starting SMTP server at {address}:{port}")
 
         server = InboxServer(self.collator, (address, port), None)
 
         try:
             asyncore.loop()
         except KeyboardInterrupt:
-            log.info('Cleaning up')
+            log.info("Cleaning up")
 
     def dispatch(self):
         """Command-line dispatch."""
-        parser = argparse.ArgumentParser(description='Run an Inbox server.')
+        parser = argparse.ArgumentParser(description="Run an Inbox server.")
 
-        parser.add_argument('addr', metavar='addr', type=str, help='addr to bind to')
-        parser.add_argument('port', metavar='port', type=int, help='port to bind to')
+        parser.add_argument("addr", metavar="addr", type=str, help="addr to bind to")
+        parser.add_argument("port", metavar="port", type=int, help="port to bind to")
 
         args = parser.parse_args()
 
