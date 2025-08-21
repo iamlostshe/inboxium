@@ -1,5 +1,5 @@
-"""Initializating a lib."""
+"""Eledant SMTP for Humans."""
 
-from .main import Inbox
+from .inboxium import Inbox
 
 __all__ = ("Inbox", )

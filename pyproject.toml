@@ -5,20 +5,19 @@ dependencies = [
   "aiosmtpd>=1.4.6",
   "loguru>=0.7.3",
 ]
-requires-python = ">=3.13"
+requires-python = ">=3.8"
 authors = [
   {name = "Kenneth Reitz", email = "me@kennethreitz.com"},
   {name = "Melcikov Ivan", email = "vanamelcikov7275@gmail.com"},
 ]
-description = "SMTP for Humans."
+description = "Eledant SMTP for Humans."
 readme = "README.md"
-license = "BSD"
+license = "BSD-3-Clause"
 license-files = ["LICENSE"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
     "Intended Audience :: Developers",
     "Natural Language :: English",
-    "License :: OSI Approved :: BSD License",
     "Programming Language :: Python",
     "Programming Language :: Python :: 3.13",
 ]
