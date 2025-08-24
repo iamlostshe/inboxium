@@ -1,22 +1,66 @@
-import inspect
+from __future__ import annotations
+
 from email import policy
 from email.header import decode_header, make_header
 from email.parser import BytesParser
+from typing import TYPE_CHECKING
 
 from aiosmtpd.controller import Controller
-from aiosmtpd.smtp import SMTP, Envelope, Session
 from loguru import logger
+
+from .types import InboxMessage
+
+if TYPE_CHECKING:
+    from email.message import Message
+
+    from aiosmtpd.smtp import SMTP, Envelope, Session
+
+
+def prepare_message(envelope: Envelope) -> InboxMessage:
+    """Prepare message."""
+    mailfrom = envelope.mail_from or ""
+    rcpttos = envelope.rcpt_tos
+    raw_data: bytes = envelope.content
+
+    # Парсим письмо с учетом MIME-политик
+    msg = BytesParser(policy=policy.default).parsebytes(raw_data)
+
+    return InboxMessage(
+        by=str(make_header(decode_header(msg.get("To", ", ".join(rcpttos))))),
+        sender=str(make_header(decode_header(msg.get("From", mailfrom)))),
+        subject=str(make_header(decode_header(msg.get("Subject", "No Subject")))),
+        text=get_body(msg),
+        raw=msg.as_string(),
+    )
+
+
+def get_body(msg: Message) -> str:
+    """Get message body (text)."""
+    if msg.is_multipart():
+        for part in msg.walk():
+            if part.get_content_type() == "text/plain":
+                return part.get_payload(decode=True).decode(
+                    part.get_content_charset("utf-8"),
+                    errors="replace",
+                )
+    else:
+        return msg.get_payload(decode=True).decode(
+            msg.get_content_charset("utf-8"),
+            errors="replace",
+        )
+
+    return ""
 
 
 class Inbox:
-    """SMTP Inbox server with decoding of headers and body."""
+    """SMTP Inbox server with decoding of headers and text."""
 
     def __init__(self, address: str, port: int | str) -> None:
         self.address = address
         self.port = int(port)
         self.collator = None
 
-    def collate(self, collator):
+    def message(self, collator):
         """Decorator to set handler for incoming messages."""
         self.collator = collator
         return collator
@@ -35,55 +79,17 @@ class Inbox:
 
     async def handle_DATA(self, server: SMTP, session: Session, envelope: Envelope):
         """Handle DATA command."""
-        mailfrom = envelope.mail_from
-        rcpttos = envelope.rcpt_tos
-        raw_data = envelope.content
+        try:
+            if self.collator:
+                message = prepare_message(envelope)
+                await self.collator(message)
 
-        # Парсим письмо с учетом MIME-политик
-        msg = BytesParser(policy=policy.default).parsebytes(raw_data)
+        except Exception as e:  # noqa: BLE001
+            logger.exception(e)
+            return "500 Internal server error"
 
-        # Декодируем заголовки
-        subject = str(make_header(decode_header(msg.get("Subject", "No Subject"))))
-        sender = str(make_header(decode_header(msg.get("From", mailfrom))))
-        recipients = str(make_header(decode_header(msg.get("To", ", ".join(rcpttos)))))
-
-        # Извлекаем тело (text/plain, либо fallback)
-        body = ""
-        if msg.is_multipart():
-            for part in msg.walk():
-                if part.get_content_type() == "text/plain":
-                    body = part.get_payload(decode=True).decode(
-                        part.get_content_charset("utf-8"), errors="replace",
-                    )
-                    break
         else:
-            body = msg.get_payload(decode=True).decode(
-                msg.get_content_charset("utf-8"), errors="replace",
-            )
-
-        if self.collator:
-            try:
-                if inspect.iscoroutinefunction(self.collator):
-                    await self.collator(
-                        to=recipients,
-                        sender=sender,
-                        subject=subject,
-                        body=body,
-                    )
-                else:
-                    await server.loop.run_in_executor(
-                        None,
-                        self.collator,
-                        recipients,
-                        sender,
-                        subject,
-                        body,
-                    )
-            except Exception as e:  # noqa: BLE001
-                logger.exception(e)
-                return "500 Internal server error"
-
-        return "250 Message accepted for delivery"
+            return "250 Message accepted for delivery"
 
     def serve(self) -> None:
         """Run the SMTP server."""

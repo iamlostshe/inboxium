@@ -25,14 +25,22 @@ That's all, what you need to start your own mail server:
 
 ``` python
 from inboxium import Inbox
+from inboxium.types import InboxMessage
 
-inbox = Inbox(address="0.0.0.0", port=4467)
+inbox = Inbox(address="0.0.0.0", port=25)  # noqa: S104
 
 
-@inbox.collate
-def handle(to, sender, subject, body):
-    print(to, sender, subject, body)
-
+@inbox.message
+async def handle(message: InboxMessage) -> None:
+    """Handle any messages."""
+    print(  # noqa: T201
+        message.by,
+        message.sender,
+        message.subject,
+        message.text,
+        message.raw,
+        sep="\n",
+    )
 
 if __name__ == "__main__":
     inbox.serve()
