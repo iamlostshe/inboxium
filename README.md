@@ -30,7 +30,7 @@ from inboxium.types import InboxMessage
 inbox = Inbox(address="0.0.0.0", port=25)  # noqa: S104
 
 
-@inbox.message
+@inbox.message()
 async def handle(message: InboxMessage) -> None:
     """Handle any messages."""
     print(  # noqa: T201
@@ -44,6 +44,31 @@ async def handle(message: InboxMessage) -> None:
 
 if __name__ == "__main__":
     inbox.serve()
+```
+
+Also, you can use simple, aiogram-like handles system, like that:
+
+``` python
+TARGET_BY = ["example@example.com"]
+TARGET_SENDER = example@example.com
+TARGET_SUBJECT = "target subject"
+TARGET_TEXT = "target text"
+
+@inbox.message(by=TARGET_BY, sender=TARGET_SENDER, subject=TARGET_SUBJECT, text=TARGET_TEXT, block=False)
+async def handle(message: InboxMessage) -> None:
+```
+
+`block` - stoping handling next functions if handler has been activated (by default is True).
+
+For example you can use it for logs:
+
+``` python
+@inbox.message(block=False)
+async def show_logs(message: InboxMessage) -> None:
+    logger.debug(
+        message.sender,
+        message.subject,
+    )
 ```
 
 You can test sever by this script:
