@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 from aiosmtpd.controller import Controller
 from loguru import logger
 
-from .types import InboxMessage
+from .types import InboxMessage, Handler
 
 if TYPE_CHECKING:
     from email.message import Message
@@ -16,25 +16,7 @@ if TYPE_CHECKING:
     from aiosmtpd.smtp import SMTP, Envelope, Session
 
 
-def prepare_message(envelope: Envelope) -> InboxMessage:
-    """Prepare message."""
-    mailfrom = envelope.mail_from or ""
-    rcpttos = envelope.rcpt_tos
-    raw_data: bytes = envelope.content
-
-    # Парсим письмо с учетом MIME-политик
-    msg = BytesParser(policy=policy.default).parsebytes(raw_data)
-
-    return InboxMessage(
-        by=str(make_header(decode_header(msg.get("To", ", ".join(rcpttos))))),
-        sender=str(make_header(decode_header(msg.get("From", mailfrom)))),
-        subject=str(make_header(decode_header(msg.get("Subject", "No Subject")))),
-        text=get_body(msg),
-        raw=msg.as_string(),
-    )
-
-
-def get_body(msg: Message) -> str:
+def _get_body(msg: Message) -> str:
     """Get message body (text)."""
     if msg.is_multipart():
         for part in msg.walk():
@@ -52,18 +34,28 @@ def get_body(msg: Message) -> str:
     return ""
 
 
+def _prepare_message(envelope: Envelope) -> InboxMessage:
+    """Prepare message."""
+    logger.debug("Prepairing msg")
+
+    msg = BytesParser(policy=policy.default).parsebytes(envelope.content)
+    return InboxMessage(
+        by=envelope.rcpt_tos,
+        sender=envelope.mail_from or "",
+        subject=str(make_header(decode_header(msg.get("Subject", "")))),
+        text=_get_body(msg),
+        raw=msg.as_string(),
+    )
+
+
 class Inbox:
-    """SMTP Inbox server with decoding of headers and text."""
+    """SMTP Inbox handler."""
 
     def __init__(self, address: str, port: int | str) -> None:
         self.address = address
         self.port = int(port)
-        self.collator = None
 
-    def message(self, collator):
-        """Decorator to set handler for incoming messages."""
-        self.collator = collator
-        return collator
+        self.handlers = []
 
     async def handle_RCPT(
         self,
@@ -72,7 +64,7 @@ class Inbox:
         envelope: Envelope,
         address: str,
         rcpt_options,
-    ):
+    ) -> str:
         """Handle RCPT command."""
         envelope.rcpt_tos.append(address)
         return "250 OK"
@@ -80,16 +72,43 @@ class Inbox:
     async def handle_DATA(self, server: SMTP, session: Session, envelope: Envelope):
         """Handle DATA command."""
         try:
-            if self.collator:
-                message = prepare_message(envelope)
-                await self.collator(message)
+            msg = _prepare_message(envelope)
+
+            for h in self.handlers:
+                if not any((h.by, h.sender, h.subject, h.text)):
+                    await h.func(msg)
+                    if h.block:
+                        break
+
+                elif any((
+                    h.by == msg.by,
+                    h.sender == msg.sender,
+                    h.subject == msg.subject,
+                    h.text == msg.text,
+                )):
+                    await h.func(msg)
+                    if h.block:
+                        break
 
         except Exception as e:  # noqa: BLE001
             logger.exception(e)
             return "500 Internal server error"
 
-        else:
-            return "250 Message accepted for delivery"
+        return "250 Message accepted for delivery"
+
+    def message(
+        self,
+        by: str | None = None,
+        sender: str | None = None,
+        subject: str | None = None,
+        text: str | None = None,
+        block: bool | None = True,
+    ):
+        """Set handler for incoming messages."""
+        def decorator(func) -> func | None:
+            self.handlers.append(Handler(func, by, sender, subject, text, block))
+
+        return decorator
 
     def serve(self) -> None:
         """Run the SMTP server."""
@@ -101,6 +120,6 @@ class Inbox:
         )
         try:
             controller.start()
-            controller._thread.join()
+            controller._thread.join()  # noqa: SLF001
         finally:
             controller.stop()
